@@ -415,19 +415,34 @@ class JsonGenerator:
         count_field = element.value.orderedContent()[1]
         if count_field.elementDeclaration.name().localName() != "count_field":
             raise Exception("JAUS MESSAGE should contain count_field!")
-        jsonSubStruct = self.create_simple_struct(
-            jsonStruct, name, count_field.value.field_type_unsigned, optional, comment)
+        jsonSubStruct = self.create_complex_struct(
+            jsonStruct, name, 'object', optional, comment)
+        jsonSubStruct['jausType'] = count_field.value.field_type_unsigned
         variable_format_field = element.value.orderedContent()[0]
         if variable_format_field.elementDeclaration.name().localName() != "format_field":
             raise Exception("JAUS MESSAGE should contain format_field!")
         if variable_format_field.value.format_enum:
+            jsonFormatFieldStruct = self.create_simple_struct(jsonSubStruct, 'formatField', 'unsigned byte', False, "")
             formatField = []
+            valuesEnum = []
             for format_enum in variable_format_field.value.format_enum:
-                formatField.append({
-                    'index': format_enum.index,
-                    'field': self.check_spaces(format_enum.field_format)
-                })
-            jsonSubStruct['formatField'] = formatField
+                enumConst = self.check_spaces(format_enum.field_format)
+                formatField.append({'valueEnum': {
+                    "enumIndex": self._to_int(format_enum.index, filename),
+                    "enumConst": self.check_spaces(format_enum.field_format)
+                }})
+                valuesEnum.append(enumConst)
+            jsonFormatFieldStruct['valueSet'] = formatField
+            # exception with change the type to string to refer the enumeration in human readable manner
+            if (len(valuesEnum) > 0):
+                jsonFormatFieldStruct['type'] = 'string'
+                jsonFormatFieldStruct['enum'] = valuesEnum
+            jsonSubStruct['encapsulatedMessage'] = "sub"
+            # append message ID definition
+            for format_enum in variable_format_field.value.format_enum:
+                self._add_payload_struct(format_enum.field_format, jsonSubStruct, False, comment, depth)
+            # append generic message struct
+            self.create_complex_struct(jsonSubStruct, 'payload', 'object', False, comment)
 
     def parse_bit_field(self, element, jsonStruct, filename, depth=1, declared_name='', declared_comment='', declared_optional=False):
         name = self.get_name(element, force=declared_name)
@@ -475,6 +490,22 @@ class JsonGenerator:
         jsonSubStruct['minLength'] = element.value.string_length
         jsonSubStruct['maxLength'] = element.value.string_length
 
+    def _add_payload_struct(self, field_type, jsonStruct, optional, comment, depth):
+        if field_type in ["JAUS MESSAGE", "JAUS_MESSAGE"]:
+            # add JAUS MESSAGE description
+            jsonPayloadStruct = self.create_simple_struct(
+                jsonStruct, 'payloadMessageId', 'unsigned short integer', optional, 'message id of the payload message')
+            jsonPayloadStruct['type'] = 'string'
+        else:
+            # add user defined struct
+            if field_type in self._known_formats:
+                (_element,
+                 _filename) = self._known_formats[field_type]
+                jsonPayloadStruct = self.create_complex_struct(
+                    jsonStruct, 'payloadStruct', 'object', optional, comment)
+                self.parse_element(
+                    _element, jsonPayloadStruct, _filename, depth + 1)
+
     def parse_variable_length_field(self, element, jsonStruct, filename, depth=1):
         name = self.get_name(element)
         comment = self.get_comment(element)
@@ -491,22 +522,11 @@ class JsonGenerator:
             jsonSubStruct['maxLength'] = count_field.value.max_count
         jsonSubStruct['jausType'] = count_field.value.field_type_unsigned
         jsonSubStruct['fieldFormat'] = element.value.field_format
-        if element.value.field_format in ["JAUS MESSAGE", "JAUS_MESSAGE"]:
-            # add JAUS MESSAGE description
-            jsonPayloadStruct = self.create_simple_struct(
-                jsonSubStruct, 'payloadMessageId', 'unsigned short integer', False, 'message id of the payload message')
-            jsonPayloadStruct['type'] = 'string'
-        else:
-            # add user defined struct
-            if element.value.field_format in self._known_formats:
-                (_element,
-                 _filename) = self._known_formats[element.value.field_format]
-                jsonPayloadStruct = self.create_complex_struct(
-                    jsonSubStruct, 'payloadStruct', 'object', optional, comment)
-                self.parse_element(
-                    _element, jsonPayloadStruct, _filename, depth + 1)
-        self.create_complex_struct(
-            jsonSubStruct, 'payload', 'object', optional, comment)
+        jsonSubStruct['encapsulatedMessage'] = "simple"
+        # append message ID definition
+        self._add_payload_struct(element.value.field_format, jsonSubStruct, False, comment, depth)
+        # append generic message struct
+        self.create_complex_struct(jsonSubStruct, 'payload', 'object', False, comment)
 
     def parse_variable_length_string(self, element, jsonStruct, filename, depth=1, declared_name='', declared_comment='', declared_optional=False):
         name = self.get_name(element, force=declared_name)

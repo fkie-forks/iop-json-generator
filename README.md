@@ -115,7 +115,7 @@ By default, the schemes are written into `{cwd}/schemes` directory. You can chan
 You can exclude subfolder from parsing if they contain different versions of the same message, e.g.
 
 ```bash
-ros2 run fkie_iop_json_generator jsidl2json.py --exclude urn.jaus.jss.core-v1.0 --input_path ~/tmp/jsidl --output_path ~/tmp/schemes -v
+ros2 run fkie_iop_json_generator jsidl2json.py --exclude urn.jaus.jss.core-v1.0 --exclude urn.jaus.jss.manipulator  --input_path ~/tmp/jsidl --output_path ~/tmp/schemes -v
 ```
 
 [iop]: https://en.wikipedia.org/wiki/UGV_Interoperability_Profile
